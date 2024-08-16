@@ -19,6 +19,7 @@ from plotly.subplots import make_subplots
 from wordcloud import WordCloud
 
 
+
 # # Set page config at the very beginning
 # st.set_page_config(page_title="Yelp Business Recommendation System", page_icon="🍽️", layout="wide")
 
@@ -367,7 +368,7 @@ elif page == 'Business Analysis':
 
 elif page == 'Institution Analysis':
     st.title('Institution Analysis')
-    
+
     # Add institution filter
     institutions = ['All'] + sorted(df_original['business_name'].unique().tolist())
     selected_institution = st.selectbox('Select Institution', institutions)

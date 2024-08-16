@@ -1,0 +1,11 @@
+streamlit
+pandas
+numpy
+matplotlib==3.8.3
+seaborn
+plotly
+folium
+streamlit-folium
+scikit-learn
+Pillow
+wordcloud
