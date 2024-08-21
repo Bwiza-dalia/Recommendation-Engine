@@ -752,4 +752,4 @@ if __name__ == "__main__":
 
     # Add a footer
     st.markdown("---")
-    st.caption("© Business Recommendation System")
+    

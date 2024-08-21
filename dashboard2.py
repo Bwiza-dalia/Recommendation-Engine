@@ -17,11 +17,14 @@ import re
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from wordcloud import WordCloud
+import qrcode
+from PIL import Image
+
 
 
 
 # # Set page config at the very beginning
-# st.set_page_config(page_title="Yelp Business Recommendation System", page_icon="🍽️", layout="wide")
+st.set_page_config(page_title="Data analytics", page_icon="🍽️", layout="wide")
 
 
 # Functions for data processing and recommendations
@@ -98,97 +101,113 @@ def haversine_distance(lat1, lon1, lat2, lon2):
 
     return distance
 
+
 def chatbot_recommendation(df, kmeans, top_businesses):
     st.title("Recommendation Chatbot")
 
-    categories = [
-        "Restaurants", "Bars", "Markets", "Grocery Stores", "Diners", "Cafes", "Arts",
-        "Bakeries", "Beauty", "Car Dealer", "Event Planning", "Hotels", "Travels",
-        "Finance", "Local Services", "Contractors", "Home Service", "Clothing",
-        "Florists", "Makeup Artist", "Hospitals", "Delivery", "Other"
-    ]
+    # Display QR Code for the chatbot URL
+    chatbot_url = "https://myfirstap.streamlit.app/?view=chatbot"
+    qr = qrcode.QRCode(
+        version=1,
+        error_correction=qrcode.constants.ERROR_CORRECT_L,
+        box_size=10,
+        border=4,
+    )
+    qr.add_data(chatbot_url)
+    qr.make(fit=True)
+    img = qr.make_image(fill='black', back_color='white')
 
-    if "messages" not in st.session_state:
-        st.session_state.messages = []
-    if "user_info" not in st.session_state:
-        st.session_state.user_info = {"age": None, "gender": None, "latitude": None, "longitude": None, "category": None}
+    # Display QR Code on the dashboard
+    st.image(img, caption="Scan to interact with the chatbot")
 
-    for message in st.session_state.messages:
-        with st.chat_message(message["role"]):
-            st.markdown(message["content"])
+    if st.experimental_get_query_params().get('view', [None])[0] == 'chatbot':
+        # Your existing chatbot code
+        categories = [
+            "Restaurants", "Bars", "Markets", "Grocery Stores", "Diners", "Cafes", "Arts",
+            "Bakeries", "Beauty", "Car Dealer", "Event Planning", "Hotels", "Travels",
+            "Finance", "Local Services", "Contractors", "Home Service", "Clothing",
+            "Florists", "Makeup Artist", "Hospitals", "Delivery", "Other"
+        ]
 
-    def get_recommendation():
-        age = st.session_state.user_info["age"]
-        gender = st.session_state.user_info["gender"]
-        lat = st.session_state.user_info["latitude"]
-        lon = st.session_state.user_info["longitude"]
-        category = st.session_state.user_info["category"]
-        recommendations = recommend_businesses(age, gender, lat, lon, category, df, kmeans, top_businesses)
-        return f"Based on your information, I recommend these businesses: {', '.join(recommendations[:3])}"
+        if "messages" not in st.session_state:
+            st.session_state.messages = []
+        if "user_info" not in st.session_state:
+            st.session_state.user_info = {"age": None, "gender": None, "latitude": None, "longitude": None, "category": None}
 
-    if not st.session_state.messages:
-        response = "Hello! I can help you find business recommendations. First, could you tell me your age?"
-        st.session_state.messages.append({"role": "assistant", "content": response})
+        for message in st.session_state.messages:
+            with st.chat_message(message["role"]):
+                st.markdown(message["content"])
+
+        def get_recommendation():
+            age = st.session_state.user_info["age"]
+            gender = st.session_state.user_info["gender"]
+            lat = st.session_state.user_info["latitude"]
+            lon = st.session_state.user_info["longitude"]
+            category = st.session_state.user_info["category"]
+            recommendations = recommend_businesses(age, gender, lat, lon, category, df, kmeans, top_businesses)
+            return f"Based on your information, I recommend these businesses: {', '.join(recommendations[:3])}"
+
+        if not st.session_state.messages:
+            response = "Hello! I can help you find business recommendations. First, could you tell me your age?"
+            st.session_state.messages.append({"role": "assistant", "content": response})
+            with st.chat_message("assistant"):
+                st.markdown(response)
+
+        if prompt := st.chat_input("Your response"):
+            st.chat_message("user").markdown(prompt)
+            st.session_state.messages.append({"role": "user", "content": prompt})
+
+            if st.session_state.user_info["age"] is None:
+                try:
+                    age = int(prompt)
+                    st.session_state.user_info["age"] = age
+                    response = "Great! Now, what's your gender? (M/F/N)"
+                except ValueError:
+                    response = "Please enter a valid age as a number."
+            elif st.session_state.user_info["gender"] is None:
+                if prompt.upper() in ['M', 'F', 'N']:
+                    st.session_state.user_info["gender"] = prompt.upper()
+                    response = "Thank you. Now, could you provide your latitude?"
+                else:
+                    response = "Please enter M for male, F for female, or N for non-binary."
+            elif st.session_state.user_info["latitude"] is None:
+                try:
+                    lat = float(prompt)
+                    st.session_state.user_info["latitude"] = lat
+                    response = "Great! Now, what's your longitude?"
+                except ValueError:
+                    response = "Please enter a valid latitude as a number."
+            elif st.session_state.user_info["longitude"] is None:
+                try:
+                    lon = float(prompt)
+                    st.session_state.user_info["longitude"] = lon
+                    response = "Great! Finally, what category of business are you interested in? Please choose from the following:\n" + "\n".join([f"{i+1}. {cat}" for i, cat in enumerate(categories)])
+                except ValueError:
+                    response = "Please enter a valid longitude as a number."
+            elif st.session_state.user_info["category"] is None:
+                if prompt.isdigit() and 1 <= int(prompt) <= len(categories):
+                    st.session_state.user_info["category"] = categories[int(prompt) - 1]
+                elif prompt.lower() in [cat.lower() for cat in categories]:
+                    st.session_state.user_info["category"] = prompt.capitalize()
+                else:
+                    response = f"Please enter a valid category number (1-{len(categories)}) or name from the list provided."
+                    with st.chat_message("assistant"):
+                        st.markdown(response)
+                    st.session_state.messages.append({"role": "assistant", "content": response})
+                    return
+
+                response = get_recommendation()
+            else:
+                response = "I've already given you recommendations. Would you like to start over? (Yes/No)"
+                if prompt.lower() == 'yes':
+                    st.session_state.user_info = {"age": None, "gender": None, "latitude": None, "longitude": None, "category": None}
+                    response += " Great! Let's start again. What's your age?"
+
         with st.chat_message("assistant"):
             st.markdown(response)
-
-    if prompt := st.chat_input("Your response"):
-        st.chat_message("user").markdown(prompt)
-        st.session_state.messages.append({"role": "user", "content": prompt})
-
-        if st.session_state.user_info["age"] is None:
-            try:
-                age = int(prompt)
-                st.session_state.user_info["age"] = age
-                response = "Great! Now, what's your gender? (M/F/N)"
-            except ValueError:
-                response = "Please enter a valid age as a number."
-        elif st.session_state.user_info["gender"] is None:
-            if prompt.upper() in ['M', 'F', 'N']:
-                st.session_state.user_info["gender"] = prompt.upper()
-                response = "Thank you. Now, could you provide your latitude?"
-            else:
-                response = "Please enter M for male, F for female, or N for non-binary."
-        elif st.session_state.user_info["latitude"] is None:
-            try:
-                lat = float(prompt)
-                st.session_state.user_info["latitude"] = lat
-                response = "Great! Now, what's your longitude?"
-            except ValueError:
-                response = "Please enter a valid latitude as a number."
-        elif st.session_state.user_info["longitude"] is None:
-            try:
-                lon = float(prompt)
-                st.session_state.user_info["longitude"] = lon
-                response = "Great! Finally, what category of business are you interested in? Please choose from the following:\n" + "\n".join([f"{i+1}. {cat}" for i, cat in enumerate(categories)])
-            except ValueError:
-                response = "Please enter a valid longitude as a number."
-        elif st.session_state.user_info["category"] is None:
-            if prompt.isdigit() and 1 <= int(prompt) <= len(categories):
-                st.session_state.user_info["category"] = categories[int(prompt) - 1]
-            elif prompt.lower() in [cat.lower() for cat in categories]:
-                st.session_state.user_info["category"] = prompt.capitalize()
-            else:
-                response = f"Please enter a valid category number (1-{len(categories)}) or name from the list provided."
-                with st.chat_message("assistant"):
-                    st.markdown(response)
-                st.session_state.messages.append({"role": "assistant", "content": response})
-                return
-
-            response = get_recommendation()
-        else:
-            response = "I've already given you recommendations. Would you like to start over? (Yes/No)"
-            if prompt.lower() == 'yes':
-                st.session_state.user_info = {"age": None, "gender": None, "latitude": None, "longitude": None, "category": None}
-                response += " Great! Let's start again. What's your age?"
-
-        with st.chat_message("assistant"):
-            st.markdown(response)
         st.session_state.messages.append({"role": "assistant", "content": response})
-
-# def extract_lat_lon(address):
-#     lat, lon = map(float, address.split(','))
-#     return lat, lon
+    else:
+        st.write("Please use the QR code to access the chatbot interface.")
         
 
 # Load and prepare data
@@ -229,32 +248,11 @@ try:
 except Exception as e:
     st.error(f"Failed to load data: {str(e)}")
     st.stop()
+    
 
 # Create a sidebar for navigation
 st.sidebar.title('Menu')
-page = st.sidebar.radio('Go to', [ 'User Analysis', 'Business Analysis', 'Institution Analysis','Business Recommendations', 'Recommendation Chatbot'])
-
-
-# if page == 'Home':
-#     st.title(" Business Recommendation System")
-#     st.write("Welcome to our business recommendation system. Choose a page from the sidebar to get started!")
-
-#     st.subheader("Quick Stats:")
-#     col1, col2, col3 = st.columns(3)
-#     with col1:
-#         st.metric("Total Users", f"{len(df_original['user_id'].unique()):,}")
-#     with col2:
-#         st.metric("Total Businesses", f"{len(df_original['business_id'].unique()):,}")
-#     with col3:
-#         st.metric("Average Rating", f"{df_original['stars'].mean():.2f}")
-
-#     # Display word cloud
-#     st.subheader("Word Cloud of Business Reviews")
-#     wordcloud_image = load_wordcloud()
-#     if wordcloud_image:
-#         st.image(wordcloud_image, use_column_width=True)
-
-
+page = st.sidebar.radio('Go to', [ 'User Analysis', 'Business Analysis', 'Institution Analysis'])
 
 if page == 'User Analysis':
     st.title('User Analysis Dashboard')
@@ -369,16 +367,7 @@ elif page == 'Business Analysis':
 elif page == 'Institution Analysis':
     st.title('Institution Analysis')
 
-    # Add institution filter
-    institutions = ['All'] + sorted(df_original['business_name'].unique().tolist())
-    selected_institution = st.selectbox('Select Institution', institutions)
-
-    if selected_institution != 'All':
-        filtered_df = df_original[df_original['business_name'] == selected_institution]
-        st.write(f"Showing data for: {selected_institution}")
-    else:
-        filtered_df = df_original
-        st.write("Showing data for all institutions")
+    
 
     # Date range selection
     st.subheader('Select Time Period')
@@ -463,17 +452,7 @@ elif page == 'Institution Analysis':
     fig_trend.update_yaxes(title_text="Number of Reviews", secondary_y=True)
     st.plotly_chart(fig_trend)
 
-    # # Correlation heatmap
-    # st.subheader('Correlation Between Metrics')
-    # corr_columns = ['stars', 'rec_score']
-    # if 'composite_score' in filtered_df.columns:
-    #     corr_columns.append('composite_score')
-    # if 'shortest_distance' in filtered_df.columns:
-    #     corr_columns.append('shortest_distance')
-    # corr_matrix = filtered_df[corr_columns].corr()
-    # fig_corr = px.imshow(corr_matrix, text_auto=True, aspect="auto", 
-    #                      title='Correlation Heatmap of Key Metrics')
-    # st.plotly_chart(fig_corr)
+   
 
     # Scatter plot of ratings vs. recommendation scores
     st.subheader('Ratings vs. Recommendation Scores')
@@ -506,145 +485,6 @@ elif page == 'Institution Analysis':
                              title='Distribution of Institution Categories')
         fig_cat_pie.update_traces(textposition='inside', textinfo='percent+label')
         st.plotly_chart(fig_cat_pie)
-
-        # # Interactive category exploration
-        # st.subheader('Explore Categories')
-        # selected_category = st.selectbox('Select a category to explore', options=['All'] + list(category_counts.index))
-        
-        # if selected_category != 'All':
-        #     category_businesses = filtered_df[filtered_df['categories'].str.contains(selected_category, case=False, na=False)]
-        #     st.write(f"Number of businesses in '{selected_category}' category: {len(category_businesses)}")
-            
-        #     # Top rated businesses in the selected category
-        #     top_rated = category_businesses.nlargest(5, 'stars')[['business_name', 'stars', 'rec_score']]
-        #     st.write("Top 5 rated businesses in this category:")
-        #     st.table(top_rated)
-
-        # # Word cloud of categories
-        # st.subheader('Category Word Cloud')
-        # category_text = ' '.join(category_counts.index)
-        # wordcloud = WordCloud(width=800, height=400, background_color='white').generate(category_text)
-        
-        # fig_wordcloud, ax = plt.subplots(figsize=(10, 5))
-        # ax.imshow(wordcloud, interpolation='bilinear')
-        # ax.axis('off')
-        # st.pyplot(fig_wordcloud)
-
-    # else:
-    #     st.write("Category information not available in the dataset.")
-
-    
-
-        
-elif page == 'Business Recommendations':
-    # st.title('Personalized Business Recommendations')
-
-    # Define the list of categories
-    categories = [
-        "All",  # Add "All" as the first option
-        "Restaurants", "Bars", "Markets", "Grocery Stores", "Diners", "Cafes", "Arts",
-        "Bakeries", "Beauty", "Car Dealer", "Event Planning", "Hotels", "Travels",
-        "Finance", "Local Services", "Contractors", "Home Service", "Clothing",
-        "Florists", "Makeup Artist", "Hospitals", "Delivery", "Others"
-    ]
-
-    # User profile input
-    st.header("Your Profile")
-    col1, col2 = st.columns(2)
-    with col1:
-        age = st.number_input('Enter your age:', min_value=0, max_value=100, value=30)
-        gender = st.selectbox('Select your gender:', ['F', 'M', 'N'])
-    with col2:
-        latitude = st.number_input('Enter your latitude:', value=-1.9441)
-        longitude = st.number_input('Enter your longitude:', value=30.0619)
-
-    # Add category selection
-    selected_category = st.selectbox('Select a business category:', categories)
-
-    # Recommendation type selection
-    st.header("Choose Your Recommendation Criteria")
-    rec_type = st.radio(
-        "What's most important to you?",
-        ("Nearby Businesses", "Highly Rated Businesses", "Most Recommended Businesses", "Best Match for Your Profile")
-    )
-
-    if st.button('Get Recommendations'):
-        try:
-            # Base recommendations
-            base_recommendations = recommend_businesses(age, gender, latitude, longitude, selected_category, df_updated, kmeans_updated, top_businesses_updated)
-            
-            # Filter df_updated based on selected category
-            if selected_category != 'All':
-                df_filtered = df_updated[df_updated['categories'].str.contains(selected_category, case=False, na=False)]
-            else:
-                df_filtered = df_updated
-
-            if rec_type == "Nearby Businesses":
-                nearby_df = df_filtered.sort_values('shortest_distance').head(10)
-                
-                # Create a map centered on the user's location
-                m = folium.Map(location=[latitude, longitude], zoom_start=12)
-                
-                # Add user marker
-                folium.Marker([latitude, longitude], popup="Your Location", icon=folium.Icon(color='red')).add_to(m)
-                
-                # Add business markers
-                for idx, row in nearby_df.iterrows():
-                    folium.Marker([row['bus_lat'], row['bus_log']], 
-                                  popup=f"{row['business_name']} - {row['shortest_distance']:.2f} km").add_to(m)
-                
-                # Display the map
-                folium_static(m)
-                
-                # Display recommendations
-                st.subheader("Nearest Businesses:")
-                for i, (idx, row) in enumerate(nearby_df.iterrows(), 1):
-                    st.write(f"**{i}. {row['business_name']}** (Distance: {row['shortest_distance']:.2f} km)")
-
-            elif rec_type == "Highly Rated Businesses":
-                top_rated = df_filtered.sort_values('composite_score', ascending=False).head(5)
-                st.subheader("Highest Rated Businesses:")
-                for i, (idx, row) in enumerate(top_rated.iterrows(), 1):
-                    st.write(f"**{i}. {row['business_name']}** (Composite Score: {row['composite_score']:.2f})")
-
-            elif rec_type == "Most Recommended Businesses":
-                most_recommended = df_filtered.sort_values('rec_score', ascending=False).head(5)
-                st.subheader("Most Recommended Businesses:")
-                for i, (idx, row) in enumerate(most_recommended.iterrows(), 1):
-                    st.write(f"**{i}. {row['business_name']}** (Recommendation Score: {row['rec_score']:.2f})")
-
-            else:  # Best Match for Your Profile
-                recommendations = pd.Series({business: 5 for business in base_recommendations})
-                st.subheader("Best Matches for Your Profile:")
-                for i, business in enumerate(recommendations.index, 1):
-                    st.write(f"**{i}. {business}**")
-
-            # Additional information about the recommendations
-            # st.write("")
-            # st.write("These recommendations are personalized based on your profile and selected criteria.")
-            # st.write(f"- Age: {age}")
-            # st.write(f"- Gender: {gender}")
-            # st.write(f"- Location: Latitude {latitude:.4f}, Longitude {longitude:.4f}")
-            # st.write(f"- Category: {selected_category}")
-            # st.write(f"- Recommendation focus: {rec_type}")
-
-        except Exception as e:
-            st.error(f"An error occurred while getting recommendations: {str(e)}")
-            st.write("Exception details:", e)
-            st.write("DataFrame columns:", df_updated.columns)
-            if 'recommendations' in locals():
-                st.write("Recommendations:", recommendations)
-
-    # Add some space at the bottom
-    st.write("")
-    st.write("")
-    
-    # Optional: Add a note or disclaimer
-    st.caption("Note: Recommendations are based on available data and may vary. Always check the latest information before making decisions.")
-    
-elif page == 'Recommendation Chatbot':
-    chatbot_recommendation(df_updated, kmeans_updated, top_businesses_updated)
-
 
 
 elif page == 'Institution Analysis':
@@ -752,4 +592,3 @@ if __name__ == "__main__":
 
     # Add a footer
     st.markdown("---")
-    st.caption("© Business Recommendation System")
